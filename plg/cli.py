@@ -3,6 +3,7 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Optional
+import json
 
 import typer
 from rich import print
@@ -62,6 +63,15 @@ async def _full_session_async(
             print(
                 "[bold yellow]Warning:[/bold yellow] No context was provided. Starting with a blank slate."
             )
+        else:
+            # Generate summary and annotations for the root decision
+            summary = await summarise_context(new_decision.context_blocks)
+            annotations = await annotate_branch(summary)
+            new_decision.summary = summary
+            new_decision.tags = json.dumps(annotations)
+            session.add(new_decision)
+            session.commit()
+            session.refresh(new_decision)
 
         print("\n[bold green]Context saved as new Decision![/bold green]")
         print(f"  Decision ID: {new_decision.id}")
@@ -133,10 +143,23 @@ def collect():
             print(
                 "[bold yellow]Warning:[/bold yellow] No context was provided. Starting with a blank slate."
             )
+            return  # Exit early if there's nothing to summarize
 
-        print("\n[bold green]Context saved as new Decision![/bold green]")
+        # Now, generate summary and annotations
+        summary = asyncio.run(summarise_context(new_decision.context_blocks))
+        annotations = asyncio.run(annotate_branch(summary))
+
+        # Update the decision with the generated data
+        new_decision.summary = summary
+        new_decision.tags = json.dumps(annotations)
+        session.add(new_decision)
+        session.commit()
+        session.refresh(new_decision)
+
+        print("\n[bold green]Context saved and analyzed as new Decision![/bold green]")
         print(f"  Decision ID: {new_decision.id}")
         print(f"  Timestamp: {new_decision.created_at.isoformat()}")
+        print(f"  Summary: {summary}")
 
 
 async def _summarise_async(decision_id: int):
@@ -190,7 +213,6 @@ async def _branch_async(decision_id: int, max_children: int):
         branches = await generate_branches(
             parent_summary=summary,
             context_blocks=parent_decision.context_blocks,
-            depth=0,  # Assuming this is the first level of branching
             max_children=max_children,
         )
 
@@ -211,8 +233,16 @@ async def _branch_async(decision_id: int, max_children: int):
 
         # Create new Decisions and BranchNodes for each generated branch
         new_decisions = []
-        for branch_text in branches:
-            child_decision = Decision(text=branch_text)
+        for branch in branches:
+            branch_text = branch["decision"]
+            tradeoffs = branch["tradeoffs"]
+            annotations = await annotate_branch(branch_text)
+
+            child_decision = Decision(
+                text=branch_text,
+                tradeoffs=json.dumps(tradeoffs),
+                tags=json.dumps(annotations),
+            )
             child_node = BranchNode(decision=child_decision, parent=parent_node)
             session.add(child_decision)
             session.add(child_node)

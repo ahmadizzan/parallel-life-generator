@@ -17,3 +17,19 @@ def find_year_in_text(text: str) -> Optional[int]:
     if match:
         return int(match.group(0))
     return None
+
+
+def extract_json_from_markdown(text: str) -> Optional[str]:
+    """
+    Extracts a JSON object or array from a markdown code block.
+
+    Args:
+        text: The text containing the markdown block.
+
+    Returns:
+        The extracted JSON string, or None if not found.
+    """
+    match = re.search(r"```json\n(.*?)\n```", text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return None

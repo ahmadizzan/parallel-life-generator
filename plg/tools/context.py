@@ -6,6 +6,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from plg.llm.factory import get_llm_client
+from plg.llm.prompts import CONTEXT_SUMMARY_PROMPT
 from plg.models.models import ContextBlock
 
 console = Console()
@@ -66,15 +67,7 @@ async def summarise_context(context_blocks: List[ContextBlock]) -> str:
         f"- {block.role.replace('_', ' ').title()}: {block.text}"
         for block in context_blocks
     )
-    prompt = f"""
-Please synthesize the following points into a concise summary of the user's situation.
-Focus on the key elements and desired outcome.
-
-Context points:
-{context_text}
-
-Summary:
-"""
+    prompt = CONTEXT_SUMMARY_PROMPT.format(context_text=context_text)
 
     response = await llm_client.acomplete(prompt=prompt)
 

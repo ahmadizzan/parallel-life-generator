@@ -1,3 +1,4 @@
+import json
 from typing import List
 
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
@@ -5,8 +6,8 @@ from sqlmodel import select, Session
 
 from plg.models.db import get_session
 from plg.models.models import BranchNode, Decision
+from plg.tools.analysis import annotate_branch
 from plg.tools.branching import generate_branches
-from plg.tools.context import summarise_context
 from plg.tools.exceptions import MaxNodesExceededError
 
 
@@ -55,6 +56,13 @@ async def expand_tree_bfs(start_decision_id: int, max_depth: int, max_children: 
         node_count = 1
         max_nodes = 50
 
+        # Get the context from the root node, to be passed down.
+        root_decision = session.get(Decision, start_decision_id)
+        if not root_decision:
+            print("[bold red]Error:[/bold red] Root decision not found.")
+            return
+        root_context_blocks = root_decision.context_blocks
+
         for depth in range(max_depth):
             level_size = len(queue)
             print(f"Expanding level {depth + 1} with {level_size} nodes...")
@@ -85,26 +93,28 @@ async def expand_tree_bfs(start_decision_id: int, max_depth: int, max_children: 
                         session.commit()
                         raise MaxNodesExceededError()
 
-                    if not parent_decision.context_blocks:
-                        summary = parent_decision.text
-                    else:
-                        summary = await summarise_context(
-                            parent_decision.context_blocks
-                        )
+                    summary = parent_decision.summary or parent_decision.text
 
                     branches = await generate_branches(
                         parent_summary=summary,
-                        context_blocks=parent_decision.context_blocks,
-                        depth=depth,
+                        context_blocks=root_context_blocks,
                         max_children=max_children,
                     )
 
-                    for branch_text in branches:
+                    for branch in branches:
                         if node_count >= max_nodes:
                             session.commit()  # Save progress before stopping
                             raise MaxNodesExceededError()
 
-                        child_decision = Decision(text=branch_text)
+                        branch_text = branch["decision"]
+                        tradeoffs = branch["tradeoffs"]
+                        annotations = await annotate_branch(branch_text)
+
+                        child_decision = Decision(
+                            text=branch_text,
+                            tradeoffs=json.dumps(tradeoffs),
+                            tags=json.dumps(annotations),
+                        )
                         child_node = BranchNode(
                             decision=child_decision, parent=parent_node
                         )

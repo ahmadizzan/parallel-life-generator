@@ -2,6 +2,7 @@ import json
 from typing import Dict, Any
 
 from plg.llm.factory import get_llm_client
+from plg.llm.prompts import TAG_GENERATION_PROMPT
 
 
 async def annotate_branch(summary: str) -> Dict[str, Any]:
@@ -17,26 +18,8 @@ async def annotate_branch(summary: str) -> Dict[str, Any]:
     """
     llm_client = get_llm_client()
 
-    prompt = f"""
-You are a strategic analyst. Your task is to analyze the following proposed life path or decision and assign it tags for risk, growth potential, and emotional tone.
+    prompt = TAG_GENERATION_PROMPT.format(summary=summary)
 
-**Decision to Analyze:**
-"{summary}"
-
-**Instructions:**
-1.  **Risk**: Assess the level of financial, social, or personal risk. Rate it as "Low", "Medium", or "High".
-2.  **Growth Potential**: Assess the potential for personal or professional growth. Rate it as "Low", "Medium", or "High".
-3.  **Emotional Tone**: Describe the primary emotional tone of this path. Use a single descriptive word (e.g., "Optimistic", "Cautious", "Ambitious", "Creative").
-
-Return your analysis as a single, flat JSON object. Do not include any other text, explanation, or markdown formatting.
-
-Example format:
-{{
-  "risk": "Medium",
-  "growth": "High",
-  "emotion": "Ambitious"
-}}
-"""
     response = await llm_client.acomplete(prompt=prompt)
     if not (response and response.content):
         return {}

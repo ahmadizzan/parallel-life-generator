@@ -1,9 +1,24 @@
+import json
 from rich.tree import Tree
 from sqlmodel import Session
 
 from plg.models.models import BranchNode
-from plg.tools.analysis import annotate_branch
-from plg.tools.context import summarise_context
+
+
+def _get_compact_tradeoffs(tradeoffs: list) -> list:
+    """Selects and formats a compact list of tradeoffs."""
+    pros = [t for t in tradeoffs if t.startswith("+")]
+    cons = [t for t in tradeoffs if t.startswith("-")]
+
+    compact_list = []
+    if pros:
+        compact_list.append(pros[0])
+    if cons:
+        compact_list.append(cons[0])
+    if len(compact_list) < 2 and len(pros) > 1:
+        compact_list.append(pros[1])
+
+    return [t.replace("+", "✔").replace("-", "✘") for t in compact_list]
 
 
 async def _build_rich_tree_level(
@@ -12,41 +27,65 @@ async def _build_rich_tree_level(
     """
     Recursively builds a `rich.tree.Tree` by fetching data for a node
     and all its children.
-
-    Args:
-        node: The current BranchNode to add to the tree.
-        tree: The rich.tree.Tree object to add the new node to.
-        session: The active database session.
-        is_root: Flag to indicate if the current node is the root.
     """
     if not node.decision:
         return
 
-    # 1. Fetch annotations and summary for the current node.
-    decision_text = node.decision.text
+    decision = node.decision
+    node_label = ""
 
-    summary_text = ""
-    if is_root and node.decision.context_blocks:
-        summary = await summarise_context(node.decision.context_blocks)
-        summary_text = f"\n[dim]Summary:[/dim] [italic]{summary}[/italic]"
+    if is_root:
+        title = f"📍 Root Context (ID: {decision.id})"
+        summary = decision.summary or "No summary available."
+        node_label = f"[bold]{title}[/bold]\n\n[italic]{summary}[/italic]"
+    else:
+        # 1. Title
+        title = decision.text
+        title_line = f"📍 Decision (ID: {decision.id}): {title}"
 
-    annotations = await annotate_branch(decision_text)
-    risk = annotations.get("risk", "N/A")
-    growth = annotations.get("growth", "N/A")
-    emotion = annotations.get("emotion", "N/A")
+        # 2. Tags
+        tags_line = ""
+        if decision.tags:
+            try:
+                tags = json.loads(decision.tags)
+                risk = tags.get("risk", "N/A")
+                growth = tags.get("growth", "N/A")
+                emotion = tags.get("emotion", "N/A")
+                tags_line = (
+                    f"Tags: [Risk: {risk}] [Growth: {growth}] [Emotion: {emotion}]"
+                )
+            except (json.JSONDecodeError, TypeError):
+                tags_line = "Tags: Error parsing tags"
 
-    # 2. Format the node's display text.
-    node_label = (
-        f"[bold]Decision (ID: {node.decision.id})[/bold]: {decision_text}"
-        f"{summary_text}\n"
-        f"[italic]Tags: [Risk: {risk}] [Growth: {growth}] [Emotion: {emotion}][/italic]"
-    )
+        # 3. Summary (first sentence)
+        summary_line = ""
+        if decision.summary:
+            summary = decision.summary.split(".")[0] + "."
+            summary_line = f"Summary: {summary}"
 
-    # 3. Add the node to the rich tree.
+        # 4. Tradeoffs (compact view)
+        tradeoffs_lines = []
+        if decision.tradeoffs:
+            try:
+                tradeoffs = json.loads(decision.tradeoffs)
+                if tradeoffs:
+                    compact_tradeoffs = _get_compact_tradeoffs(tradeoffs)
+                    tradeoffs_lines.append("Tradeoffs:")
+                    for t in compact_tradeoffs:
+                        tradeoffs_lines.append(f"  {t}")
+            except (json.JSONDecodeError, TypeError):
+                tradeoffs_lines.append("Tradeoffs: Error parsing")
+
+        # 5. Assemble the node content
+        content = [title_line, tags_line, summary_line]
+        if tradeoffs_lines:
+            content.extend(tradeoffs_lines)
+
+        node_label = "\n".join(line for line in content if line)
+
     branch = tree.add(node_label)
 
-    # 4. Recursively call for children.
-    # We use a direct query here to ensure children are loaded within the session.
+    # Recursively call for children.
     for child_node in node.children:
         await _build_rich_tree_level(child_node, branch, session)
 
