@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "parallel-life-generator"
+version = "0.1.0"
+description = ""
+authors = []
+readme = "README.md"
+packages = [{include = "parallel_life_generator"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+openai = "^1.14.2"
+typer = "^0.9.0"
+sqlmodel = "^0.0.16"
+rich = "^13.7.1"
+python-dotenv = "^1.0.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.1.1"
+ruff = "^0.3.4"
+black = "^24.3.0"
+pre-commit = "^3.7.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api" 

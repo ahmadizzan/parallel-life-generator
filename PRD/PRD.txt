@@ -1,0 +1,235 @@
+# Parallel Life Generator (PLG) – Product Requirements Document
+
+**Version:** 0.1
+**Date:** 3 Jun 2025
+**Author:** ChatGPT (draft for user refinement)
+
+---
+
+## 1. Purpose
+
+Create a lightweight agent that helps users explore alternate life paths by generating a branching narrative tree from a single decision point, grounded in user supplied context written in free text blocks.
+
+## 2. Background
+
+Many reflective tools focus on past journaling or future goal setting, but few let users safely experiment with “what‑if” scenarios in a structured yet creative way. LLMs can rapidly expand hypotheticals, but they tend to hallucinate without grounding. PLG addresses this by asking targeted context questions first, then simulating plausible branches.
+
+## 3. Goals
+
+* Help users see second‑ and third‑order effects of a major decision.
+* Keep context collection flexible, flat, and user controlled.
+* Produce a clear tree that can be visualised or exported.
+* Keep the code base small (< 500 loc for core logic).
+
+### Non‑Goals
+
+* Serving as medical, legal, or financial advice.
+* Deep psychological therapy or clinical diagnosis.
+
+## 4. Target Users / Personas
+
+1. **Reflective Professional** – mid‑career, considering relocation or career change.
+2. **Relationship Navigator** – evaluating major personal commitments.
+3. **Curious Student** – exploring identity or study abroad options.
+
+## 5. Key Use Cases
+
+* “What if I moved to Berlin in 2023 instead of Tokyo?”
+* “What if I ended my long‑distance relationship last year?”
+* “What if I took a gap year before grad school?”
+
+## 6. Functional Requirements
+
+1. **Input Collection**
+   • Accept one freeform decision statement.
+   • Detect missing timeframe; prompt if absent.
+2. **Context Capture**
+   • Prompt user with up to five open questions (career, personal life, finances, mental state, meta notes).
+   • Store answers as plain text under domain keys.
+3. **Branch Generation**
+   • For each node generate two to three plausible branches.
+   • Allow depth parameter (default 2 levels).
+4. **Branch Evaluation**
+   • Annotate each branch with qualitative tags: risk, growth, emotional impact.
+5. **Visualization**
+   • Output Markdown tree; support export as Mermaid or JSON.
+6. **Data Persistence**
+   • Save decision, context, and generated tree to local storage (JSON file or SQLite).
+   • Provide load and revisit capability.
+7. **Configuration Options**
+   • Depth limit, persona lens, tag verbosity.
+
+## 7. Non‑Functional Requirements
+
+* **Performance**: Generate a two‑level tree in under 5 seconds at 40 tokens per branch.
+* **Security**: All user data stored locally unless user opts into cloud sync.
+* **Privacy**: No data retained by LLM provider beyond request window.
+* **Internationalisation**: Support UTF‑8; primary interface English.
+
+## 8. Technical Architecture
+
+* **Backend**: Python 3.12 with FastAPI CLI wrapper.
+* **LLM**: OpenAI o3 function calling.
+* **Vector Store**: Chroma or SQLite FTS for context retrieval.
+* **Tool Functions**:
+  • `parse_decision`
+  • `ask_context_questions`
+  • `generate_branch`
+  • `annotate_branch`
+  • `export_tree`
+* **Front‑End**:
+  • CLI (MVP).
+  • Optional React web viewer for tree.
+
+## 9. User Flow (CLI MVP)
+
+1. User runs `plg start`.
+2. App prompts for decision statement.
+3. App asks context questions until user types `done`.
+4. Agent summarises context and asks for confirmation.
+5. Agent generates branch tree, displays Markdown tree.
+6. User can adjust depth or restart.
+
+## 10. Data Model (simplified)
+
+```
+Decision { id, statement, timeframe }
+ContextBlock { decision_id, domain, text }
+BranchNode { id, decision_id, parent_id, depth, summary, annotation }
+```
+
+## 11. MVP Scope
+
+* CLI interface.
+* Depth fixed to 2.
+* Export JSON and Markdown only.
+* No authentication or multi‑user.
+
+## 12. Success Metrics
+
+* **Qualitative**: User reports clarity or new insight (survey score ≥ 4/5).
+* **Quantitative**: 70 % of sessions reach tree generation; average branch depth 2.
+
+## 13. Risks and Mitigations
+
+* **Hallucination**: Minimise by injecting full context into prompt and restricting generation length.
+* **User overload**: Keep question set short; allow ‘skip’.
+* **Privacy concern**: Provide local‑only mode default.
+
+## 14. Timeline (indicative)
+
+| Week | Milestone                               |
+| ---- | --------------------------------------- |
+| 1    | Finalise PRD, set repo, scaffold CLI    |
+| 2    | Implement context capture + persistence |
+| 3    | Integrate LLM branch generation         |
+| 4    | Annotation and export formats           |
+| 5    | Beta testing with 3 users               |
+| 6    | Polish, docs, v1.0 release              |
+
+## 15. Open Questions
+
+* Should we add memory of prior runs to influence future simulations?
+* How to best visualise trees in terminal?
+* Option for multiple decision points in one session?
+
+---
+
+## 16. Agent Architecture & Flow
+
+### 16.1 High‑Level Overview
+
+The agent is a **single‑loop reactive system** that receives user intent (a decision point), ensures adequate grounding via a lightweight context interview, and then iteratively expands a branching tree of narrative states.  Each branch is stored as a `BranchNode` persisted to disk so the user can revisit or extend depth later.
+
+**Core components**
+
+| Component             | Responsibility                                         |
+| --------------------- | ------------------------------------------------------ |
+| **CLI / Web UI**      | Collect raw input, display progress & tree             |
+| **Context Collector** | Ask follow‑up questions, build context JSON            |
+| **Decision Parser**   | Detect time frame & domain cues from decision text     |
+| **Agent Core**        | Holds the loop, selects & invokes tools, manages depth |
+| **Toolbox**           | Discrete function‑call tools exposed to the LLM        |
+| **LLM (o3)**          | Reasoning + narrative generation                       |
+| **Data Store**        | Persists context & branches (SQLite + JSON export)     |
+| **Exporter**          | Renders Markdown / Mermaid / JSON                      |
+
+### 16.2 Component Diagram (Mermaid)
+
+```mermaid
+graph TD
+    A[User] --> B(UI: CLI / Web)
+    B --> C(Context Collector)
+    C -->|context JSON| D(Data Store)
+    B --> E(Decision Parser)
+    E --> F(Agent Core)
+    F --> G{Toolbox}
+    G --> H[LLM o3]
+    H --> F
+    F --> D
+    F --> I(Exporter)
+    I --> A
+```
+
+### 16.3 Sequence Flow (Depth = 2 Example)
+
+1. **User Input** → "What if I moved to Berlin in 2023?"
+2. **Decision Parser** extracts tentative year (2023) & flags unknown context.
+3. **Context Collector** asks 3–5 questions; user replies in free text.
+4. **Agent Core** creates `root_node` with context blob.
+5. **Level 1 Generation**
+   • `generate_branch(root_node)` returns 2–3 child summaries via LLM.
+   • `annotate_branch()` tags each child.
+6. **Level 2 Generation** repeats for every L1 child (respecting max depth).
+7. **Exporter** builds Markdown + optional Mermaid. CLI prints tree.
+8. **Persist**: All nodes & context commit to SQLite; JSON snapshot written to `~/plg_sessions/<timestamp>.json`.
+
+### 16.4 Toolbox / Function Signatures
+
+| Tool                    | JSON Schema (In)                          | Returns                                          | Notes                          |                              |                       |
+| ----------------------- | ----------------------------------------- | ------------------------------------------------ | ------------------------------ | ---------------------------- | --------------------- |
+| `parse_decision`        | `{ "statement": str }`                    | \`{ "cleaned": str, "year": int                  | null }\`                       | quick regex + LLM refinement |                       |
+| `ask_context_questions` | `{ "q": str }`                            | `{ "answer": str }`                              | called until user types `done` |                              |                       |
+| `summarise_context`     | `{ "answers": [str] }`                    | `{ "summary": str }`                             | compresses into 1‑2 paras      |                              |                       |
+| `generate_branch`       | `{ "parent_summary": str, "depth": int }` | `{ "branches": [ {"summary": str} ] }`           | depth‑aware temperature        |                              |                       |
+| `annotate_branch`       | `{ "summary": str }`                      | `{ "risk": str, "growth": str, "emotion": str }` | rule‑of‑thumb heuristics       |                              |                       |
+| `export_tree`           | \`{ "format": "markdown"                  | "json"                                           | "mermaid" }\`                  | `str`                        | returns full document |
+
+### 16.5 Prompt Template Highlights
+
+```text
+SYSTEM: You are an alternate‑life narrator. Use supplied context verbatim. Do NOT invent facts outside context unless explicitly told you may speculate.
+
+USER: <decision_point>  
+CONTEXT:
+<career>
+<personal_life>
+<finances>
+<mental_state>
+<meta_notes>
+
+ASSISTANT (tool call): generate_branch { … }
+```
+
+Temperature scales down with depth to keep plausibility.
+
+### 16.6 Data & Memory Strategy
+
+* **Context Table** keyed by `decision_id`.
+* **BranchNode** stores `depth`, `parent_id`, `summary`, `annotation` JSON.
+* Embeddings optional; simple FTS is adequate for recall.
+
+### 16.7 Error & Edge‑Case Handling
+
+| Scenario                 | Strategy                                            |
+| ------------------------ | --------------------------------------------------- |
+| User skips all context   | Warn once → proceed with "Minimal Context" tag      |
+| LLM returns > 900 tokens | Truncate while keeping first & last sentences       |
+| Depth explosion          | Hard cap = 3 levels or 50 total nodes               |
+| Persist failure          | Retry; on second fail warn user & dump to temp JSON |
+
+---
+
+*End of Architecture Addendum*
+
+*End of PRD Draft*
