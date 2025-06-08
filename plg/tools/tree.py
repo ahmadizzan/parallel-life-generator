@@ -1,11 +1,13 @@
 from typing import List
 
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 from sqlmodel import select, Session
 
 from plg.models.db import get_session
 from plg.models.models import BranchNode, Decision
 from plg.tools.branching import generate_branches
 from plg.tools.context import summarise_context
+from plg.tools.exceptions import MaxNodesExceededError
 
 
 def _get_start_node(session: Session, start_decision_id: int) -> BranchNode:
@@ -35,6 +37,9 @@ async def expand_tree_bfs(start_decision_id: int, max_depth: int, max_children: 
         start_decision_id: The ID of the Decision to start the expansion from.
         max_depth: The maximum depth to expand the tree to.
         max_children: The number of child branches to generate for each node.
+
+    Raises:
+        MaxNodesExceededError: If the number of nodes exceeds 50.
     """
     with get_session() as session:
         try:
@@ -47,6 +52,8 @@ async def expand_tree_bfs(start_decision_id: int, max_depth: int, max_children: 
             return
 
         queue: List[BranchNode] = [start_node]
+        node_count = 1
+        max_nodes = 50
 
         for depth in range(max_depth):
             level_size = len(queue)
@@ -56,31 +63,55 @@ async def expand_tree_bfs(start_decision_id: int, max_depth: int, max_children: 
                 break
 
             next_level_nodes = []
-            for _ in range(level_size):
-                parent_node = queue.pop(0)
-                parent_decision = parent_node.decision
-
-                if not parent_decision:
-                    continue
-
-                if not parent_decision.context_blocks:
-                    summary = parent_decision.text
-                else:
-                    summary = await summarise_context(parent_decision.context_blocks)
-
-                branches = await generate_branches(
-                    parent_summary=summary,
-                    context_blocks=parent_decision.context_blocks,
-                    depth=depth,
-                    max_children=max_children,
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("{task.completed}/{task.total}"),
+                transient=True,
+            ) as progress:
+                task = progress.add_task(
+                    f"Generating children for level {depth + 1}", total=level_size
                 )
+                for _ in range(level_size):
+                    parent_node = queue.pop(0)
+                    progress.update(task, advance=1)
+                    parent_decision = parent_node.decision
 
-                for branch_text in branches:
-                    child_decision = Decision(text=branch_text)
-                    child_node = BranchNode(decision=child_decision, parent=parent_node)
-                    session.add(child_decision)
-                    session.add(child_node)
-                    next_level_nodes.append(child_node)
+                    if not parent_decision:
+                        continue
+
+                    if node_count >= max_nodes:
+                        session.commit()
+                        raise MaxNodesExceededError()
+
+                    if not parent_decision.context_blocks:
+                        summary = parent_decision.text
+                    else:
+                        summary = await summarise_context(
+                            parent_decision.context_blocks
+                        )
+
+                    branches = await generate_branches(
+                        parent_summary=summary,
+                        context_blocks=parent_decision.context_blocks,
+                        depth=depth,
+                        max_children=max_children,
+                    )
+
+                    for branch_text in branches:
+                        if node_count >= max_nodes:
+                            session.commit()  # Save progress before stopping
+                            raise MaxNodesExceededError()
+
+                        child_decision = Decision(text=branch_text)
+                        child_node = BranchNode(
+                            decision=child_decision, parent=parent_node
+                        )
+                        session.add(child_decision)
+                        session.add(child_node)
+                        next_level_nodes.append(child_node)
+                        node_count += 1
 
             session.commit()
             for node in next_level_nodes:

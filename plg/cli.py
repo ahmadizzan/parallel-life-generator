@@ -15,6 +15,7 @@ from plg.models.models import BranchNode, ContextBlock, Decision
 from plg.tools.analysis import annotate_branch
 from plg.tools.branching import generate_branches
 from plg.tools.context import collect_context, summarise_context
+from plg.tools.exceptions import MaxNodesExceededError
 from plg.tools.show import generate_tree_view
 from plg.tools.tree import expand_tree_bfs
 
@@ -28,12 +29,18 @@ class ExportFormat(str, Enum):
 
 def _create_initial_decision(session: Session, context_data: dict) -> Decision:
     """Creates and saves the initial decision from collected context."""
+    is_empty = all(not value or value.isspace() for value in context_data.values())
+
+    text = (
+        "Initial context was empty. This is a blank slate."
+        if is_empty
+        else "Initial context collected."
+    )
+
     context_blocks = [
         ContextBlock(role=key, text=value) for key, value in context_data.items()
     ]
-    new_decision = Decision(
-        text="Initial context collected.", context_blocks=context_blocks
-    )
+    new_decision = Decision(text=text, context_blocks=context_blocks)
     session.add(new_decision)
     session.commit()
     session.refresh(new_decision)
@@ -51,13 +58,22 @@ async def _full_session_async(
     start_decision_id = None
     with get_session() as session:
         new_decision = _create_initial_decision(session, context_data)
+        if new_decision.text.startswith("Initial context was empty"):
+            print(
+                "[bold yellow]Warning:[/bold yellow] No context was provided. Starting with a blank slate."
+            )
+
         print("\n[bold green]Context saved as new Decision![/bold green]")
         print(f"  Decision ID: {new_decision.id}")
         start_decision_id = new_decision.id
 
     # Step 2: Expand Tree
     print("\n\n[bold cyan]Step 2: Expanding Decision Tree...[/bold cyan]")
-    await _expand_async(start_decision_id, max_depth, max_children)
+    try:
+        await _expand_async(start_decision_id, max_depth, max_children)
+    except MaxNodesExceededError as e:
+        print(f"\n[bold red]Stopping expansion:[/bold red] {e}")
+        print("The tree has been partially saved. You can view it with 'plg show'.")
 
     # Step 3: Export Tree (if requested)
     if export_format:
@@ -109,6 +125,11 @@ def collect():
 
     with get_session() as session:
         new_decision = _create_initial_decision(session, context_data)
+        if new_decision.text.startswith("Initial context was empty"):
+            print(
+                "[bold yellow]Warning:[/bold yellow] No context was provided. Starting with a blank slate."
+            )
+
         print("\n[bold green]Context saved as new Decision![/bold green]")
         print(f"  Decision ID: {new_decision.id}")
         print(f"  Timestamp: {new_decision.created_at.isoformat()}")
@@ -251,11 +272,15 @@ def annotate(
 
 async def _expand_async(decision_id: int, max_depth: int, max_children: int):
     """Async logic for the expand command."""
-    await expand_tree_bfs(
-        start_decision_id=decision_id,
-        max_depth=max_depth,
-        max_children=max_children,
-    )
+    try:
+        await expand_tree_bfs(
+            start_decision_id=decision_id,
+            max_depth=max_depth,
+            max_children=max_children,
+        )
+    except MaxNodesExceededError as e:
+        print(f"\n[bold red]Stopping expansion:[/bold red] {e}")
+        print("The tree has been partially saved. You can view it with 'plg show'.")
 
 
 @app.command()

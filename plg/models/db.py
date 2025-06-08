@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Generator
+from typing import Optional
 
 from sqlmodel import Session, SQLModel, create_engine
 
@@ -32,12 +32,15 @@ def init_database_if_needed():
 
 
 @contextmanager
-def get_session() -> Generator[Session, None, None]:
-    """
-    Provides a SQLModel session within a context manager, ensuring the
-    session is always closed.
-    """
-    # Ensure the database exists before creating a session
-    init_database_if_needed()
-    with Session(engine) as session:
+def get_session(db_engine: Optional[create_engine] = None):
+    """Provides a transactional scope around a series of operations."""
+    current_engine = db_engine or engine
+    session = Session(current_engine)
+    try:
         yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
