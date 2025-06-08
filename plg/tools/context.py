@@ -40,7 +40,8 @@ Be as detailed as you feel necessary.
 
     context_data = {}
     for key, question in DEFAULT_CONTEXT_QUESTIONS.items():
-        response = typer.prompt(f"[bold yellow]?[/bold yellow] {question}")
+        print(f"\n[bold yellow]?[/bold yellow] {question}")
+        response = typer.prompt(">", default="", show_default=False)
         context_data[key] = response
 
     return context_data

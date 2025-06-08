@@ -88,6 +88,10 @@ async def _full_session_async(
 
         await _export_async(start_decision_id, output_file, export_format)
 
+    # Step 4: Display the final tree
+    print("\n\n[bold cyan]Step 4: Displaying Generated Tree...[/bold cyan]")
+    await _show_async(start_decision_id)
+
 
 @app.command()
 def launch(
@@ -95,7 +99,7 @@ def launch(
         2, "--depth", "-d", help="The maximum depth of the expansion."
     ),
     max_children: int = typer.Option(
-        2, "--children", "-c", help="The number of children to generate per node."
+        3, "--children", "-c", help="The number of children to generate per node."
     ),
     export_format: Optional[ExportFormat] = typer.Option(
         None,
@@ -292,7 +296,7 @@ def expand(
         2, "--depth", "-d", help="The maximum depth of the expansion."
     ),
     max_children: int = typer.Option(
-        2, "--children", "-c", help="The number of children to generate per node."
+        3, "--children", "-c", help="The number of children to generate per node."
     ),
 ):
     """

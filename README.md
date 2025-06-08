@@ -81,18 +81,39 @@ OPENAI_API_KEY="sk-..."
 ```
 Replace `sk-...` with your actual OpenAI API key.
 
-### 3. Usage
+### 3. Usage: A Scenario
 
-The main entry point is the `plg launch` command. This will start an interactive session to collect your context and then automatically build the decision tree.
+Let's say you're a Software Engineer feeling burnt out by the corporate grind. You want to explore a change, but you have constraints: you need to maintain a similar income level and want to stay in a creative, product-focused role.
+
+You can launch `plg` to explore your options:
 
 ```bash
-poetry run plg launch --depth 2 --children 2 --export markdown
+poetry run plg launch
 ```
 
-This command will:
-1.  Ask you a series of questions.
-2.  Generate a decision tree of depth 2, with 2 children per node.
-3.  Export the final tree to a timestamped Markdown file in `~/plg_sessions/`.
+The tool will first ask for your context:
+-   **Core Desire**: Find a more fulfilling, creative, and autonomous career path.
+-   **Current Situation**: Burnt out Software Engineer at a large tech company.
+-   **Key Constraints**: Maintain current income, stay in a product-focused role, avoid large financial risks.
+-   **Relevant Skills**: 10 years of experience in software development, project management, and system design.
+-   **Ideal Outcome**: In 5 years, working on a product I'm passionate about, with a good work-life balance.
+
+After you provide the context, PLG will generate and display a tree of possibilities:
+
+```
+Decision Tree starting from Decision ID: 12
+└── Decision (ID: 12): Initial context collected.
+    Summary: The user is an experienced Senior Software Engineer feeling burnt out and seeking a more fulfilling, autonomous career. They need to maintain their income and stay product-focused, aiming for a passion-driven role with good work-life balance in five years.
+    Tags: [Risk: Low] [Growth: High] [Emotion: Hopeful]
+    ├── Decision (ID: 13): Transition to a Product Manager role within your current company.
+    │   Tags: [Risk: Low] [Growth: Medium] [Emotion: Neutral]
+    ├── Decision (ID: 14): Start a side-business building a niche SaaS product in a familiar domain.
+    │   Tags: [Risk: Medium] [Growth: High] [Emotion: Ambitious]
+    └── Decision (ID: 15): Seek a "founding engineer" role at a promising early-stage startup.
+        Tags: [Risk: High] [Growth: High] [Emotion: Adventurous]
+```
+
+From here, you can use the `plg expand <id>` command on any of these new decision IDs to explore each path further.
 
 ---
 
