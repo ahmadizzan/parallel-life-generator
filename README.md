@@ -4,7 +4,7 @@ PLG is a command-line tool that uses the power of Large Language Models (LLMs) t
 
 ---
 
-## 🏛️ Architecture
+## Architecture
 
 The application is built with a modular architecture, separating concerns for clarity and maintainability.
 
@@ -12,28 +12,25 @@ The application is built with a modular architecture, separating concerns for cl
 graph TD
     subgraph "User"
         direction LR
-        CLI[💻 CLI (plg/cli.py)]
+        CLI["CLI (plg/cli.py)"]
     end
 
     subgraph "Application Core"
         direction TB
-        Tools[🛠️ Tools (plg/tools/*)]
-        LLM[🧠 LLM Client (plg/llm/*)]
-        Models[📚 Models (plg/models/*)]
-        DB[🗄️ Database (SQLite)]
+        Tools["Tools (plg/tools/*)"]
+        LLM["LLM Client (plg/llm/*)"]
+        Models["Models (plg/models/*)"]
+        DB["Database (SQLite)"]
     end
 
     subgraph "External Services"
-        OpenAI[🤖 OpenAI API]
+        OpenAI["OpenAI API"]
     end
 
     User -- "Runs Commands" --> CLI
-
     CLI -- "Orchestrates" --> Tools
-
     Tools -- "Generate/Analyze Text" --> LLM
     Tools -- "CRUD Operations" --> Models
-
     LLM -- "API Calls" --> OpenAI
     Models -- "ORM Interaction" --> DB
 ```
@@ -46,7 +43,7 @@ graph TD
 
 ---
 
-## ✨ Features
+## Features
 
 -   **Interactive Context Collection**: Guides you through a series of questions to build a rich picture of your starting point.
 -   **Autonomous Tree Expansion**: Recursively generates a tree of branching life paths to a specified depth.
@@ -57,7 +54,7 @@ graph TD
 
 ---
 
-## 🚀 Quickstart
+## Quickstart
 
 ### Prerequisites
 
@@ -99,7 +96,7 @@ This command will:
 
 ---
 
-## 💻 Commands
+## Commands
 
 Here are the main commands available:
 
@@ -118,7 +115,7 @@ Here are the main commands available:
 Here's an example of what the tree looks like in your terminal:
 
 ```
-🌳 Decision Tree starting from Decision ID: 8
+Decision Tree starting from Decision ID: 8
 └── Decision (ID: 8): Initial context collected.
     Tags: [Risk: Low] [Growth: Low] [Emotion: N/A]
     ├── Decision (ID: 9): Path One: Start by leveraging your current job as a learning ground for enhancing 
@@ -131,7 +128,7 @@ Here's an example of what the tree looks like in your terminal:
 
 ---
 
-## 🔧 Development
+## Development
 
 This project uses `ruff` for linting and `black` for code formatting. A `Makefile` is provided for convenience.
 
