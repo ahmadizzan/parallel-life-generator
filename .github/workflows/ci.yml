@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+      - name: Cache Poetry's dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: ${{ runner.os }}-poetry-cache-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-cache-
+      - name: Install dependencies
+        run: poetry install --no-interaction
+      - name: Run linters
+        run: |
+          poetry run ruff .
+          poetry run black --check .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+    
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+      - name: Cache Poetry's dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: ${{ runner.os }}-poetry-cache-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-cache-${{ matrix.python-version }}-
+      - name: Install dependencies
+        run: poetry install --no-interaction
+      - name: Run pytest
+        run: poetry run pytest 
