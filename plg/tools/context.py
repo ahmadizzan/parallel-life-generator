@@ -1,30 +1,49 @@
 from typing import List
-from rich.prompt import Prompt
+import typer
+from rich import print
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
 
 from plg.llm.factory import get_llm_client
 from plg.models.models import ContextBlock
 
+console = Console()
 
-def collect_context() -> dict[str, str]:
+DEFAULT_CONTEXT_QUESTIONS = {
+    "core_desire": "What is the core desire or goal you want to achieve?",
+    "current_situation": "Briefly describe your current situation and why you're considering a change.",
+    "key_constraints": "What are the key constraints or non-negotiables (e.g., financial, geographical, personal)?",
+    "relevant_skills": "What are your relevant skills, resources, or strengths that could help you?",
+    "ideal_outcome": "In an ideal world, what would the perfect outcome look like in 5 years?",
+}
+
+
+def collect_context() -> dict:
     """
-    Asks the user a series of open-ended questions to gather context
-    and returns their answers as a dictionary.
+    Interactively collects context from the user by asking a series of questions.
     """
-    print("Please answer the following questions to set the context.")
+    print(
+        Panel(
+            Markdown(
+                """
+# Welcome to the Context Collector!
 
-    questions = {
-        "current_situation": "What is your current situation or challenge?",
-        "ideal_outcome": "What is the ideal outcome you are aiming for?",
-        "key_values": "What are your key values or principles in this situation?",
-        "potential_obstacles": "What are the potential obstacles or constraints?",
-        "available_resources": "What resources are available to you?",
-    }
+Please answer the following questions to help generate your parallel life paths.
+Be as detailed as you feel necessary.
+"""
+            ),
+            title="[bold cyan]Parallel Life Generator[/bold cyan]",
+            border_style="cyan",
+        )
+    )
 
-    answers = {}
-    for key, question_text in questions.items():
-        answers[key] = Prompt.ask(f"[bold yellow]?[/bold yellow] {question_text}")
+    context_data = {}
+    for key, question in DEFAULT_CONTEXT_QUESTIONS.items():
+        response = typer.prompt(f"[bold yellow]?[/bold yellow] {question}")
+        context_data[key] = response
 
-    return answers
+    return context_data
 
 
 async def summarise_context(context_blocks: List[ContextBlock]) -> str:

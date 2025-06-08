@@ -1,45 +1,102 @@
 import asyncio
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
+from typing import Optional
+
 import typer
 from rich import print
-from sqlmodel import select
+from sqlmodel import select, Session
 
-from plg.llm.factory import get_llm_client
+from plg.export.markdown import render_tree_to_markdown
+from plg.export.mermaid import render_tree_to_mermaid
 from plg.models.db import get_session
 from plg.models.models import BranchNode, ContextBlock, Decision
 from plg.tools.analysis import annotate_branch
 from plg.tools.branching import generate_branches
 from plg.tools.context import collect_context, summarise_context
+from plg.tools.show import generate_tree_view
 from plg.tools.tree import expand_tree_bfs
-
 
 app = typer.Typer()
 
 
-async def _launch_async():
-    """The async part of the launch command."""
-    print("PLG CLI ready. Pinging the LLM...")
-    llm_client = get_llm_client()
-    response = await llm_client.acomplete(prompt="ping")
+class ExportFormat(str, Enum):
+    markdown = "markdown"
+    mermaid = "mermaid"
 
-    if response and response.content:
-        # Example of using the session to save something
-        with get_session() as session:
-            # In a real scenario, you would save a Decision or BranchNode here
-            print(f"Database session is active: {session}")
-        print(f"LLM response received: '{response.content[:10]}...'")
-    else:
-        print("Received no content from LLM.")
+
+def _create_initial_decision(session: Session, context_data: dict) -> Decision:
+    """Creates and saves the initial decision from collected context."""
+    context_blocks = [
+        ContextBlock(role=key, text=value) for key, value in context_data.items()
+    ]
+    new_decision = Decision(
+        text="Initial context collected.", context_blocks=context_blocks
+    )
+    session.add(new_decision)
+    session.commit()
+    session.refresh(new_decision)
+    return new_decision
+
+
+async def _full_session_async(
+    export_format: Optional[ExportFormat], max_depth: int, max_children: int
+):
+    """Orchestrates a full PLG session: collect -> expand -> export."""
+    # Step 1: Collect Context
+    print("\n[bold cyan]Step 1: Collect Initial Context[/bold cyan]")
+    context_data = collect_context()
+
+    start_decision_id = None
+    with get_session() as session:
+        new_decision = _create_initial_decision(session, context_data)
+        print("\n[bold green]Context saved as new Decision![/bold green]")
+        print(f"  Decision ID: {new_decision.id}")
+        start_decision_id = new_decision.id
+
+    # Step 2: Expand Tree
+    print("\n\n[bold cyan]Step 2: Expanding Decision Tree...[/bold cyan]")
+    await _expand_async(start_decision_id, max_depth, max_children)
+
+    # Step 3: Export Tree (if requested)
+    if export_format:
+        print("\n\n[bold cyan]Step 3: Exporting Tree...[/bold cyan]")
+
+        sessions_dir = Path.home() / "plg_sessions"
+        sessions_dir.mkdir(exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        extension = "md" if export_format == ExportFormat.markdown else "mmd"
+        output_file = sessions_dir / f"session_{timestamp}.{extension}"
+
+        await _export_async(start_decision_id, output_file, export_format)
 
 
 @app.command()
-def launch():
+def launch(
+    max_depth: int = typer.Option(
+        2, "--depth", "-d", help="The maximum depth of the expansion."
+    ),
+    max_children: int = typer.Option(
+        2, "--children", "-c", help="The number of children to generate per node."
+    ),
+    export_format: Optional[ExportFormat] = typer.Option(
+        None,
+        "--export",
+        "-e",
+        case_sensitive=False,
+        help="Export the generated tree to a timestamped file in ~/plg_sessions/.",
+    ),
+):
     """
-    Launches the Parallel Life Generator.
+    Launches a full Parallel Life Generator session from scratch.
 
-    Initializes the database automatically if it doesn't exist,
-    then runs a test generation.
+    This command will first guide you through an interactive context collection.
+    Then, it will automatically expand the decision tree based on your input.
+    Finally, it can optionally export the full tree to a file.
     """
-    asyncio.run(_launch_async())
+    asyncio.run(_full_session_async(export_format, max_depth, max_children))
 
 
 @app.command()
@@ -51,20 +108,7 @@ def collect():
     context_data = collect_context()
 
     with get_session() as session:
-        # Create the list of ContextBlock objects
-        context_blocks = [
-            ContextBlock(role=key, text=value) for key, value in context_data.items()
-        ]
-
-        # Create a parent Decision to link the context to
-        new_decision = Decision(
-            text="Initial context collected.", context_blocks=context_blocks
-        )
-
-        session.add(new_decision)
-        session.commit()
-        session.refresh(new_decision)
-
+        new_decision = _create_initial_decision(session, context_data)
         print("\n[bold green]Context saved as new Decision![/bold green]")
         print(f"  Decision ID: {new_decision.id}")
         print(f"  Timestamp: {new_decision.created_at.isoformat()}")
@@ -232,9 +276,84 @@ def expand(
     asyncio.run(_expand_async(decision_id, max_depth, max_children))
 
 
+async def _export_async(decision_id: int, output_file: Path, format: ExportFormat):
+    """Async logic for the export command."""
+    with get_session() as session:
+        # Find the root node for the export
+        root_node = session.exec(
+            select(BranchNode).where(BranchNode.decision_id == decision_id)
+        ).first()
+
+        if not root_node:
+            print(
+                f"[bold red]Error:[/bold red] No branch data found for Decision ID {decision_id}. Try running 'plg branch' or 'plg expand' first."
+            )
+            raise typer.Exit(code=1)
+
+        print(
+            f"Exporting tree starting from Decision ID {decision_id} in {format.value} format..."
+        )
+
+        content = ""
+        if format == ExportFormat.markdown:
+            content = await render_tree_to_markdown(root_node.id, session)
+        elif format == ExportFormat.mermaid:
+            content = await render_tree_to_mermaid(root_node.id, session)
+
+        output_file.write_text(content)
+        print(f"\n[bold green]Successfully exported tree to {output_file}[/bold green]")
+
+
 @app.command()
-def hello(name: str):
-    print(f"Hello {name}")
+def export(
+    decision_id: int = typer.Argument(
+        ..., help="The ID of the root decision of the tree to export."
+    ),
+    output_file: Path = typer.Argument(
+        ..., help="The path to the output markdown file.", writable=True
+    ),
+    format: ExportFormat = typer.Option(
+        ExportFormat.markdown,
+        "--format",
+        "-f",
+        help="The output format for the exported tree.",
+    ),
+):
+    """
+    Exports a decision tree to a markdown file.
+    """
+    asyncio.run(_export_async(decision_id, output_file, format))
+
+
+async def _show_async(decision_id: int):
+    """Async logic for the show command."""
+    with get_session() as session:
+        # Find the root node for the tree
+        root_node = session.exec(
+            select(BranchNode).where(BranchNode.decision_id == decision_id)
+        ).first()
+
+        if not root_node:
+            print(
+                f"[bold red]Error:[/bold red] No branch data found for Decision ID {decision_id}. Try running 'plg branch' or 'plg expand' first."
+            )
+            raise typer.Exit(code=1)
+
+        print(f"Generating tree view for Decision ID {decision_id}...")
+        rich_tree = await generate_tree_view(root_node.id, session)
+        print(rich_tree)
+
+
+@app.command()
+def show(
+    decision_id: int = typer.Argument(
+        ..., help="The ID of the root decision of the tree to show."
+    ),
+):
+    """
+    Shows a decision tree in the CLI.
+    """
+    asyncio.run(_show_async(decision_id))
 
 
 if __name__ == "__main__":
