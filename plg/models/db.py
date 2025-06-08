@@ -34,6 +34,10 @@ def init_database_if_needed():
 @contextmanager
 def get_session(db_engine: Optional[create_engine] = None):
     """Provides a transactional scope around a series of operations."""
+    # This ensures that no matter where get_session is called from,
+    # the database is ready.
+    init_database_if_needed()
+
     current_engine = db_engine or engine
     session = Session(current_engine)
     try:
