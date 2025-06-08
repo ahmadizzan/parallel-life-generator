@@ -23,6 +23,9 @@ pre-commit = "^3.7.0"
 mypy = "^1.11.0"
 pytest-asyncio = "^1.0.0"
 
+[tool.poetry.scripts]
+plg = "plg.cli:app"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api" 
