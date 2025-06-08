@@ -66,7 +66,7 @@ graph TD
 Clone the repository and install the dependencies:
 
 ```bash
-git clone https://github.com/your-username/parallel-life-generator.git
+git clone https://github.com/ahmadizzan/parallel-life-generator.git
 cd parallel-life-generator
 poetry install
 ```
